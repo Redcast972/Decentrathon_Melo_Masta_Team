@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ImageAnalyzer — Demo (интеграция с API)</title>
+
+  <!-- Быстрый рендер -->
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* ===== ДИЗАЙН / ОСНОВА ===== */
+    .bg-animated{background:linear-gradient(135deg,#f6f8ff 0%,#f4f7ff 35%,#f8fbff 100%)}
+    .fade-up{opacity:0;transform:translateY(16px);transition:opacity .7s ease,transform .7s ease;will-change:opacity,transform}
+    .fade-up.visible{opacity:1;transform:translateY(0)}
+    .drop-glow{box-shadow:0 0 0 0 rgba(99,102,241,.35);animation:glow 1.2s ease-out forwards}
+    @keyframes glow{to{box-shadow:0 0 0 16px rgba(99,102,241,0)}}
+
+    /* Превью в DnD */
+    .dnd-preview{width:100%;height:220px;display:flex;justify-content:center;align-items:center;overflow:hidden}
+    .dnd-preview img{max-height:100%;max-width:100%;border-radius:1rem;box-shadow:0 8px 24px rgba(0,0,0,.1);object-fit:contain}
+    .badge{position:absolute;top:.75rem;right:.75rem;background:rgba(99,102,241,.95);color:#fff;padding:.35rem .6rem;border-radius:.65rem;font-size:.75rem;box-shadow:0 6px 16px rgba(99,102,241,.35)}
+
+    /* Плавное появление изображений */
+    .img-fade{opacity:0;transform:scale(.98);filter:blur(6px);transition:opacity .45s ease,transform .45s ease,filter .45s ease;will-change:opacity,transform,filter}
+    .img-fade.show{opacity:1;transform:scale(1);filter:blur(0)}
+
+    /* Прогресс-бары */
+    .bar-fill{transition:width .75s cubic-bezier(.22,1,.36,1)}
+    .bar-animated{background-size:24px 24px;background-image:linear-gradient(45deg,rgba(255,255,255,.35) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.35) 50%,rgba(255,255,255,.35) 75%,transparent 75%,transparent);animation:move 1s linear infinite}
+    @keyframes move{from{background-position:0 0}to{background-position:24px 0}}
+
+    /* Конфетти */
+    .confetti{position:fixed;inset:0;pointer-events:none;z-index:50}
+
+    /* Оптима для больших секций */
+    .cv{content-visibility:auto;contain-intrinsic-size:1000px 800px}
+
+    /* Уважение к reduce motion */
+    @media (prefers-reduced-motion: reduce){
+      *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
+      .bar-animated{animation:none}
+    }
+  </style>
+</head>
+<body class="bg-animated text-gray-900 font-sans antialiased">
+
+  <!-- HERO / DEMO -->
+  <section id="demo" class="cv relative z-10 py-16 md:py-24 px-6">
+    <div class="max-w-4xl mx-auto text-center">
+      <h2 class="fade-up text-4xl md:text-6xl font-extrabold tracking-tight mb-5">Анализ изображения за секунды</h2>
+      <p class="fade-up text-lg text-gray-600 max-w-2xl mx-auto mb-10">
+        Перетащите изображение или выберите файл — мы красиво покажем предпросмотр и сгенерируем анимированный отчёт.
+      </p>
+
+      <!-- Drop area -->
+      <div id="drop-area" class="fade-up relative border-2 border-dashed border-gray-300 rounded-3xl p-6 bg-white/80 cursor-pointer">
+        <input type="file" id="fileElem" accept="image/*" class="hidden" />
+        <div id="drop-invite" class="text-gray-600 select-none">
+          Перетащите изображение сюда или <span class="text-indigo-600 font-medium">нажмите</span>, чтобы выбрать
+        </div>
+
+        <!-- Превью -->
+        <div id="drop-preview" class="dnd-preview hidden relative">
+          <img id="drop-preview-img" class="img-fade" alt="preview" loading="lazy" decoding="async" />
+          <span id="badge" class="badge">Загружено ✓</span>
+        </div>
+
+        <!-- Пульс -->
+        <div id="drop-pulse" class="absolute inset-0 rounded-3xl pointer-events-none ring-0 ring-indigo-400/40 opacity-0"></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="mt-6 flex items-center justify-center gap-3">
+        <button id="analyzeBtn" disabled class="px-6 py-3 rounded-xl bg-gray-300 text-gray-600 cursor-not-allowed transition shadow">
+          Сгенерировать отчёт
+        </button>
+        <button id="resetBtn" class="px-4 py-3 rounded-xl bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
+          Сбросить
+        </button>
+      </div>
+
+      <!-- Анализ / спиннер -->
+      <div id="analyzing" class="hidden mt-10 flex items-center justify-center gap-3 text-gray-700">
+        <svg class="w-6 h-6 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <circle class="opacity-20" cx="12" cy="12" r="10" stroke-width="4"/>
+          <path d="M22 12a10 10 0 0 1-10 10" stroke-width="4"/>
+        </svg>
+        <span>Идёт анализ изображения…</span>
+      </div>
+
+      <!-- REPORT -->
+      <div id="reportSection" class="hidden mt-12 text-left">
+        <div class="max-w-3xl mx-auto bg-white/90 backdrop-blur rounded-3xl p-8 shadow-xl ring-1 ring-black/5">
+          <div class="flex items-start justify-between gap-6 flex-wrap">
+            <div>
+              <h3 class="text-2xl font-bold">Результаты анализа</h3>
+              <p class="text-gray-600 mt-1">Анимированные показатели качества изображения.</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <button id="exportBtn" class="px-4 py-2 rounded-xl bg-indigo-600 text-white shadow hover:bg-indigo-700 transition">
+                Экспорт JSON
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-8 space-y-5">
+            <div>
+              <p class="text-sm text-gray-700">Качество <span id="quality-label" class="ml-1 text-gray-500">0%</span></p>
+              <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                <div id="quality" class="bar-fill h-3 rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 w-0"></div>
+              </div>
+            </div>
+            <div>
+              <p class="text-sm text-gray-700">Резкость <span id="sharpness-label" class="ml-1 text-gray-500">0%</span></p>
+              <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                <div id="sharpness" class="bar-fill h-3 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 w-0"></div>
+              </div>
+            </div>
+            <div>
+              <p class="text-sm text-gray-700">Освещённость <span id="light-label" class="ml-1 text-gray-500">0%</span></p>
+              <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                <div id="light" class="bar-fill h-3 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 w-0"></div>
+              </div>
+            </div>
+            <div>
+              <p class="text-sm text-gray-700">Детализация <span id="details-label" class="ml-1 text-gray-500">0%</span></p>
+              <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                <div id="details" class="bar-fill h-3 rounded-full bg-gradient-to-r from-sky-500 to-indigo-500 w-0"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Объекты из ответа -->
+          <div id="objectsWrap" class="hidden mt-10">
+            <h4 class="text-lg font-semibold mb-3">Обнаруженные объекты</h4>
+            <div id="objectsList" class="grid md:grid-cols-2 gap-3 text-sm"></div>
+          </div>
+        </div>
+      </div><!-- /REPORT -->
+    </div>
+  </section>
+
+  <!-- HOW -->
+  <section id="how" class="cv relative z-10 max-w-7xl mx-auto py-20 px-6">
+    <h3 class="fade-up text-3xl md:text-4xl font-bold text-center mb-14">Как это работает</h3>
+    <div class="grid md:grid-cols-4 gap-8 text-center">
+      <div class="fade-up p-6 rounded-2xl bg-white/80 ring-1 ring-black/5">① Загрузите фото</div>
+      <div class="fade-up p-6 rounded-2xl bg-white/80 ring-1 ring-black/5">② Система анализирует</div>
+      <div class="fade-up p-6 rounded-2xl bg-white/80 ring-1 ring-black/5">③ Получите отчёт</div>
+      <div class="fade-up p-6 rounded-2xl bg-white/80 ring-1 ring-black/5">④ Экспортируйте результат</div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features" class="cv relative z-10 py-20 px-6 bg-white/60 ring-1 ring-inset ring-black/5">
+    <h3 class="fade-up text-3xl md:text-4xl font-bold text-center mb-14">Возможности</h3>
+    <div class="grid md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+      <div class="fade-up p-8 rounded-3xl bg-white ring-1 ring-black/5 hover:shadow-xl transition">
+        <h4 class="text-lg font-semibold mb-2">Распознавание объектов</h4>
+        <p class="text-gray-600">Определение текста, людей и объектов в кадре (демо-режим).</p>
+      </div>
+      <div class="fade-up p-8 rounded-3xl bg-white ring-1 ring-black/5 hover:shadow-xl transition">
+        <h4 class="text-lg font-semibold mb-2">Анализ качества</h4>
+        <p class="text-gray-600">Индексы резкости, освещённости и детализации.</p>
+      </div>
+      <div class="fade-up p-8 rounded-3xl bg-white ring-1 ring-black/5 hover:shadow-xl transition">
+        <h4 class="text-lg font-semibold mb-2">Экспорт отчёта</h4>
+        <p class="text-gray-600">Выгрузка JSON с результатами.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Конфетти-канвас -->
+  <canvas id="confetti" class="confetti"></canvas>
+
+  <footer class="relative z-10 py-12 text-center text-gray-500 text-sm">© 2025 ImageAnalyzer</footer>
+
+<script>
+  /* =========================
+     БАЗА
+  ==========================*/
+  const API_BASE = "http://localhost:8000"; // Поменяешь при деплое
+  const $ = (s,root=document)=>root.querySelector(s);
+  const $$ = (s,root=document)=>[...root.querySelectorAll(s)];
+
+  // Элементы
+  const dropArea   = $('#drop-area');
+  const fileInput  = $('#fileElem');
+  const dropInvite = $('#drop-invite');
+  const dropPrev   = $('#drop-preview');
+  const dropPrevImg= $('#drop-preview-img');
+  const badge      = $('#badge');
+  const dropPulse  = $('#drop-pulse');
+
+  const analyzeBtn = $('#analyzeBtn');
+  const resetBtn   = $('#resetBtn');
+  const analyzing  = $('#analyzing');
+  const reportSec  = $('#reportSection');
+  const exportBtn  = $('#exportBtn');
+
+  const objectsWrap= $('#objectsWrap');
+  const objectsList= $('#objectsList');
+
+  /* Появление */
+  const io = new IntersectionObserver(entries=>{
+    for(const e of entries){ if(e.isIntersecting) e.target.classList.add('visible'); }
+  },{threshold:.12});
+  $$('.fade-up').forEach(el=>io.observe(el));
+
+  /* DnD логика */
+  let isLocked = false;
+  let selectedFile = null;
+
+  dropArea.addEventListener('click', ()=>{ if(!isLocked) fileInput.click(); });
+  dropArea.addEventListener('dragover', e=>{ if(isLocked) return; e.preventDefault(); }, {passive:false});
+  dropArea.addEventListener('drop', e=>{
+    if(isLocked) return;
+    e.preventDefault();
+    handleFiles(e.dataTransfer.files);
+    pulseDrop();
+  }, {passive:false});
+  fileInput.addEventListener('change', ()=> handleFiles(fileInput.files));
+
+  async function handleFiles(files){
+    if(!files || !files.length) return;
+    selectedFile = files[0];
+    if(!selectedFile.type.startsWith('image/')){
+      alert('Пожалуйста, выберите файл изображения.');
+      selectedFile = null;
+      return;
+    }
+    const url = await fileToDataURL(selectedFile);
+    dropPrevImg.classList.remove('show');
+    dropPrevImg.src = url;
+    dropPrevImg.onload = ()=> dropPrevImg.classList.add('show');
+
+    dropInvite.classList.add('hidden');
+    dropPrev.classList.remove('hidden');
+    badge.classList.remove('hidden');
+
+    isLocked = true;
+    analyzeBtn.disabled = false;
+    analyzeBtn.className = 'px-6 py-3 rounded-xl bg-indigo-600 text-white shadow hover:bg-indigo-700 transition';
+  }
+
+  function unlockDropArea(){
+    isLocked = false;
+    selectedFile = null;
+    dropInvite.classList.remove('hidden');
+    dropPrev.classList.add('hidden');
+    dropPrevImg.removeAttribute('src');
+    badge.classList.add('hidden');
+  }
+
+  function pulseDrop(){
+    dropPulse.classList.remove('opacity-0');
+    dropPulse.classList.add('drop-glow');
+    dropPulse.style.transition = 'opacity .9s ease';
+    dropPulse.style.opacity = '1';
+    setTimeout(()=>{ dropPulse.style.opacity = '0'; dropPulse.classList.remove('drop-glow'); }, 500);
+    fireConfetti();
+  }
+
+  /* =========================
+     АНАЛИЗ (POST /predict/)
+  ==========================*/
+  analyzeBtn.addEventListener('click', async ()=>{
+    if (!selectedFile || !(selectedFile instanceof File)) {
+      alert('Файл не выбран');
+      return;
+    }
+
+    analyzing.classList.remove('hidden');
+    reportSec.classList.add('hidden');
+    objectsWrap.classList.add('hidden');
+    objectsList.innerHTML = "";
+
+    // ВАЖНО: НЕ сбрасываем selectedFile до отправки!
+    const file = selectedFile;
+    const fd = new FormData();
+    fd.append('file', file); // имя поля = "file" (как в FastAPI)
+
+    try {
+      const res = await fetch(`${API_BASE}/predict/`, {
+        method: "POST",
+        body: fd
+        // Не ставим Content-Type — браузер сам проставит boundary
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+
+      const data = await res.json();
+
+      analyzing.classList.add('hidden');
+      reportSec.classList.remove('hidden');
+
+      // Метрики (визуализация на твои бары — примерная логика)
+      const m = data.metrics || {};
+      animateBar('quality',   clamp(m.quality ?? 0, 0, 100));
+      animateBar('sharpness', clamp(m.sharpness ?? 0, 0, 100));
+      animateBar('light',     clamp(m.light ?? 0, 0, 100));
+      animateBar('details',   clamp(m.details ?? 0, 0, 100));
+          
+      // показать превью с боксами (если есть)
+      if (data.image_base64) {
+        dropPrevImg.src = "data:image/png;base64," + data.image_base64;
+        dropPrevImg.classList.add('show');
+        dropPrev.classList.remove('hidden');
+        badge.classList.remove('hidden');
+      }
+      
+      // список детекций (как раньше)
+      if (Array.isArray(data.detections) && data.detections.length){
+        objectsWrap.classList.remove('hidden');
+        objectsList.innerHTML = data.detections.map((d,i)=>`
+          <div class="p-3 rounded-xl border border-gray-100 bg-white/70 flex items-center justify-between">
+            <div>
+              <div class="font-medium">${escapeHTML(d.class ?? ('Object #' + (i+1)))}</div>
+              <div class="text-gray-500 text-xs">conf: ${((d.confidence ?? 0)*100).toFixed(1)}%</div>
+            </div>
+            ${Array.isArray(d.bbox) ? `<div class="text-xs text-gray-500">bbox: [${d.bbox.map(n=>Number(n).toFixed(1)).join(', ')}]</div>` : ''}
+          </div>
+        `).join('');
+      }
+
+      fireConfetti(160);
+    } catch (err) {
+      analyzing.classList.add('hidden');
+      alert(`Ошибка при анализе: ${err.message}`);
+      console.error('API error:', err);
+    } finally {
+      // Если хочешь очищать drop после запроса — раскомментируй:
+      // unlockDropArea();
+    }
+  });
+
+  /* =========================
+     Сброс / Экспорт
+  ==========================*/
+  resetBtn.addEventListener('click', ()=>{
+    analyzeBtn.disabled = true;
+    analyzeBtn.className = 'px-6 py-3 rounded-xl bg-gray-300 text-gray-600 cursor-not-allowed transition shadow';
+    reportSec.classList.add('hidden');
+    objectsWrap.classList.add('hidden');
+    objectsList.innerHTML = "";
+    fileInput.value = '';
+    unlockDropArea();
+  });
+
+  exportBtn?.addEventListener('click', ()=>{
+    const payload = collectReportPayload();
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'image_report.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  function collectReportPayload(){
+    const get = id => parseInt(document.getElementById(id+'-label').textContent, 10) || 0;
+    return {
+      quality: get('quality'),
+      sharpness: get('sharpness'),
+      light: get('light'),
+      details: get('details'),
+      generatedAt: new Date().toISOString()
+    };
+  }
+
+  /* =========================
+     Анимация баров
+  ==========================*/
+  function animateBar(id, to){
+    const bar = document.getElementById(id);
+    const label = document.getElementById(id+'-label');
+    const start = performance.now();
+    const dur = 900;
+    const from = 0;
+    const target = clamp(Math.round(to || 0), 0, 100);
+    bar.classList.add('bar-animated');
+
+    function step(t){
+      const k = Math.min(1, (t - start) / dur);
+      const val = Math.round(from + (target - from) * (1 - Math.pow(1 - k, 3)));
+      bar.style.width = val + '%';
+      label.textContent = val + '%';
+      if (k < 1) requestAnimationFrame(step);
+      else bar.classList.remove('bar-animated');
+    }
+    requestAnimationFrame(step);
+  }
+
+  /* =========================
+     Утилиты
+  ==========================*/
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+  function escapeHTML(s){ return (s??'').toString().replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
+  function fileToDataURL(file){
+    return new Promise((res,rej)=>{
+      const fr = new FileReader();
+      fr.onload = ()=>res(fr.result);
+      fr.onerror = rej;
+      fr.readAsDataURL(file);
+    });
+  }
+
+  /* =========================
+     Конфетти
+  ==========================*/
+  const canvas = $('#confetti');
+  const ctx = canvas.getContext('2d', { alpha:true });
+  let pieces = [], animating=false;
+
+  function resize(){ canvas.width = innerWidth; canvas.height = innerHeight; }
+  addEventListener('resize', resize, {passive:true}); resize();
+
+  function fireConfetti(count=80){
+    for(let i=0;i<count;i++){
+      pieces.push({
+        x: Math.random()*canvas.width,
+        y: -10,
+        r: Math.random()*6+3,
+        a: 1,
+        vx: (Math.random()-.5)*2,
+        vy: Math.random()*2+2,
+        rot: Math.random()*360,
+        vr: (Math.random()-.5)*6
+      });
+    }
+    if(!animating){ animating=true; requestAnimationFrame(draw); }
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    for(const p of pieces){ p.x+=p.vx; p.y+=p.vy; p.vy*=0.995; p.a-=0.008; p.rot+=p.vr; }
+    pieces = pieces.filter(p=> p.y < canvas.height+20 && p.a>0);
+    for(const p of pieces){
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.a);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot*Math.PI/180);
+      const hue = (p.x / canvas.width) * 360;
+      ctx.fillStyle = `hsl(${hue} 80% 60%)`;
+      ctx.fillRect(-p.r, -p.r*0.5, p.r*2, p.r);
+      ctx.restore();
+    }
+    if(pieces.length) requestAnimationFrame(draw); else animating=false;
+  }
+</script>
+</body>
+</html>

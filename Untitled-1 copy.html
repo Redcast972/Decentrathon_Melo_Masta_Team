@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#f5f7f6] text-gray-900 font-sans">
+
+  <!-- Header -->
+  <header class="flex justify-between items-center py-6 px-6 max-w-6xl mx-auto">
+    <h1 class="text-xl md:text-2xl font-bold tracking-tight text-gray-800">ImageAnalyzer</h1>
+    <nav class="hidden md:flex gap-8 text-gray-700 text-sm">
+      <a href="#how" class="hover:text-black transition">Как работает</a>
+      <a href="#features" class="hover:text-black transition">Возможности</a>
+      <a href="#demo" class="hover:text-black transition">Демо</a>
+    </nav>
+  </header>
+
+  <!-- Hero with Drag & Drop -->
+  <section id="demo" class="py-28 px-6 max-w-6xl mx-auto">
+    <div class="grid md:grid-cols-2 gap-12 items-start">
+      
+      <!-- Drop Zone -->
+      <div>
+        <h2 class="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">Анализируй изображение за секунды</h2>
+        <p class="text-lg text-gray-600 mb-6">Перетащите изображение или выберите файл для предпросмотра.</p>
+
+        <div id="drop-area" class="border-2 border-dashed border-gray-300 rounded-3xl p-12 bg-white hover:bg-gray-50 transition cursor-pointer">
+          <input type="file" id="fileElem" accept="image/*" class="hidden">
+          <p class="text-gray-500">Перетащите изображение сюда или кликните для выбора</p>
+          <div id="gallery" class="mt-6"></div>
+        </div>
+
+        <button id="reportBtn" class="hidden mt-8 bg-gray-900 text-white px-8 py-4 rounded-full font-medium hover:bg-black transition">
+          Создать отчет
+        </button>
+      </div>
+
+      <!-- Progress Bars -->
+      <div id="reportSection" class="hidden space-y-6">
+        <div>
+          <div class="flex justify-between mb-2">
+            <span class="text-sm font-medium">Качество</span>
+            <span id="quality-label" class="text-sm text-gray-500">0%</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-4">
+            <div id="quality" class="h-4 rounded-full bg-gradient-to-r from-green-400 to-blue-500" style="width:0%"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between mb-2">
+            <span class="text-sm font-medium">Четкость</span>
+            <span id="sharpness-label" class="text-sm text-gray-500">0%</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-4">
+            <div id="sharpness" class="h-4 rounded-full bg-gradient-to-r from-purple-400 to-pink-500" style="width:0%"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between mb-2">
+            <span class="text-sm font-medium">Освещенность</span>
+            <span id="light-label" class="text-sm text-gray-500">0%</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-4">
+            <div id="light" class="h-4 rounded-full bg-gradient-to-r from-yellow-400 to-red-500" style="width:0%"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between mb-2">
+            <span class="text-sm font-medium">Детализация</span>
+            <span id="details-label" class="text-sm text-gray-500">0%</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-4">
+            <div id="details" class="h-4 rounded-full bg-gradient-to-r from-indigo-400 to-cyan-500" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="script.js"></script>
+</body>
+</html>
